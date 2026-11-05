@@ -202,6 +202,8 @@ class Engine:
                 last[src["id"]] = now_iso()
                 self.status[src["id"]] = "ok (chrome)"
             self.status["x"] = "ok"
+        except ChromeUnavailable as exc:  # e.g. the tab was taken over: stop X for this refresh
+            self.status["x"] = f"stopped this refresh: {exc}"[:200]
         except XRateLimited as exc:
             until = (datetime.now(timezone.utc) + timedelta(hours=1)).replace(microsecond=0).isoformat()
             st["backoff_until"] = until

@@ -103,6 +103,15 @@ class XProfileUnreadable(RuntimeError):
     pass
 
 
+class TabHijacked(ChromeUnavailable):
+    """Our tab ended up somewhere we didn't navigate (e.g. the user clicked in it)."""
+
+
+def _expect_url(page: Any, needle: str) -> None:
+    if needle.lower() not in page.url.lower():
+        raise TabHijacked(f"tab is on {page.url[:80]}, expected {needle}")
+
+
 _X_LIMIT = re.compile(r"rate limit|try again later|something went wrong\. try reloading", re.I)
 
 
@@ -162,6 +171,7 @@ class ChromeLive:
     def _read_x(self, url: str, max_posts: int) -> list[dict[str, Any]]:
         page = self._page
         page.goto(url, wait_until="domcontentloaded")
+        expected = url.split("://", 1)[1].rstrip("/")
         try:
             page.wait_for_selector('article[data-testid="tweet"]', timeout=15000)
         except Exception:
@@ -170,6 +180,7 @@ class ChromeLive:
             return []
         posts: dict[str, dict[str, Any]] = {}
         for _ in range(4):
+            _expect_url(page, expected)
             for p in page.evaluate(X_EXTRACT_JS, max_posts * 2):
                 if p.get("url") and not p.get("pinned"):
                     posts.setdefault(p["url"], p)
@@ -193,6 +204,7 @@ class ChromeLive:
             page.wait_for_selector('[data-testid="UserName"], [data-testid="emptyState"]', timeout=15000)
         except Exception:
             _check_x_limit(page)
+        _expect_url(page, f"x.com/{handle}")
         return page.evaluate(PROFILE_JS)
 
     def read_x_following(self, max_posts: int = 40) -> list[dict[str, Any]]:
@@ -232,6 +244,7 @@ class ChromeLive:
                     captured.append({"url": r.url, "json": r.json()})
                 except Exception:
                     pass
+            _expect_url(page, "trading212.com")
             text = page.inner_text("body")
         finally:
             page.remove_listener("response", on_response)
