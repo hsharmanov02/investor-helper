@@ -92,6 +92,22 @@ class ChromeUnavailable(RuntimeError):
     pass
 
 
+class XRateLimited(RuntimeError):
+    pass
+
+
+_X_LIMIT = re.compile(r"rate limit|try again later|something went wrong\. try reloading", re.I)
+
+
+def _check_x_limit(page: Any) -> None:
+    try:
+        text = page.inner_text("body", timeout=3000)[:3000]
+    except Exception:
+        return
+    if _X_LIMIT.search(text):
+        raise XRateLimited("X says to slow down (rate limit)")
+
+
 class ChromeLive:
     """Use as a context manager: ``with ChromeLive(url) as c: c.read_x_profile('Reuters')``."""
 
@@ -141,7 +157,8 @@ class ChromeLive:
         try:
             page.wait_for_selector('article[data-testid="tweet"]', timeout=15000)
         except Exception:
-            log.warning("No posts rendered at %s (logged out or rate-limited?)", url)
+            _check_x_limit(page)
+            log.warning("No posts rendered at %s (logged out?)", url)
             return []
         posts: dict[str, dict[str, Any]] = {}
         for _ in range(4):
@@ -167,7 +184,7 @@ class ChromeLive:
         try:
             page.wait_for_selector('[data-testid="UserName"], [data-testid="emptyState"]', timeout=15000)
         except Exception:
-            pass
+            _check_x_limit(page)
         return page.evaluate(PROFILE_JS)
 
     def read_x_following(self, max_posts: int = 40) -> list[dict[str, Any]]:

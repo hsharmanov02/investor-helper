@@ -10,6 +10,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="InvestorHelper", description="Advisory-only stock research helper.")
     ap.add_argument("--once", action="store_true", help="run one refresh, print the report and exit")
     ap.add_argument("--no-chrome", action="store_true", help="skip the live Chrome connection for this run")
+    ap.add_argument("--skip-x", action="store_true", help="don't read X this run (Trading212 is still read)")
     ap.add_argument("--check-chrome", action="store_true", help="test the live Chrome connection and exit")
     args = ap.parse_args()
     if args.check_chrome:
@@ -28,9 +29,12 @@ def main() -> int:
         s = load_settings()
         if args.no_chrome:
             s.use_chrome_cdp = False
-        md = Engine(settings=s).run_cycle()
+        eng = Engine(settings=s)
+        eng.skip_x = args.skip_x
+        md = eng.run_cycle()
         sys.stdout.reconfigure(encoding="utf-8")
         print(md)
+        print("\n".join(f"[status] {k}: {v}" for k, v in eng.status.items() if not v.startswith("ok")))
         return 0
     from .gui.app import main as gui_main
     return gui_main()

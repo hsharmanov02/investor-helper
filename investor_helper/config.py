@@ -46,6 +46,14 @@ class Settings:
     # --remote-debugging-port=9222). Used for X and Trading212; read-only.
     use_chrome_cdp: bool = True
     chrome_cdp_url: str = "http://localhost:9222"
+    # Shared lock file; blank = %USERPROFILE%\\InvestorHelper\\chrome.lock
+    chrome_lock_path: str = ""
+    # X is read mainly from your Following timeline (one page). Individual profile
+    # reads and identity checks are rationed to stay well clear of X rate limits.
+    x_enabled: bool = True
+    x_profile_reads_per_cycle: int = 4
+    x_verifications_per_cycle: int = 4
+    x_seconds_between_pages: int = 12
     # X (Twitter) API v2 bearer token. Optional; RSS fallback is used without it.
     x_bearer_token: str = ""
     # SEC requires a descriptive User-Agent with contact info.

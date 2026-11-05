@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -15,7 +16,8 @@ from .config import Settings, data_dir, load_settings, load_sources, prior_weigh
 from .db import Database, now_iso
 from .report import build_report
 from .sources import calendars, edgar, pages, prices, rss, x_api
-from .sources.chrome_live import ChromeLive, ChromeUnavailable, parse_x_posts, verify_x_profile
+from .chrome_lock import ChromeBusy, ChromeLock
+from .sources.chrome_live import ChromeLive, ChromeUnavailable, XRateLimited, parse_x_posts, verify_x_profile
 from .sources.trading212 import ReadOnlyTrading212, Trading212Error
 
 log = logging.getLogger(__name__)
@@ -33,6 +35,7 @@ class Engine:
         self.last_account: dict[str, Any] | None = None
         self.ipos: list[dict[str, Any]] = []
         self.rotation: list[str] = []
+        self.skip_x = False
 
     # ------------------------------------------------------------- helpers
     @property
@@ -89,32 +92,28 @@ class Engine:
         account = None
         chrome_ok = False
         if s.use_chrome_cdp:
+            lock = ChromeLock(s.chrome_lock_path or None)
             try:
+                lock.acquire()
                 with ChromeLive(s.chrome_cdp_url) as chrome:
                     chrome_ok = True
-                    x_sources = self._verify_x_sources(chrome.x_profile_info, sources, x_sources)
-                    for src in x_sources:
-                        try:
-                            posts = chrome.read_x_profile(src["handle"])
-                            counts["x"] += self._ingest(parse_x_posts(src, posts))
-                            self.status[src["id"]] = "ok (chrome)"
-                        except Exception as exc:
-                            self.status[src["id"]] = f"error: {exc}"[:200]
-                        time.sleep(2)
-                    try:
-                        following = {"id": "x:following", "kind": "x", "name": "X Following timeline"}
-                        counts["x"] += self._ingest(parse_x_posts(following, chrome.read_x_following()))
-                    except Exception as exc:
-                        log.info("Following timeline skipped: %s", exc)
+                    if s.x_enabled and not self.skip_x:
+                        counts["x"] += self._collect_x_chrome(chrome, sources, x_sources)
                     if not s.trading212_api_key:
                         try:
                             account = chrome.read_trading212()
                         except Exception as exc:
                             self.status["trading212"] = f"error: {exc}"[:200]
+            except ChromeBusy as exc:
+                self.status["chrome"] = f"skipped this refresh: {exc}"
+                log.info("%s", exc)
+                chrome_ok = True  # Chrome exists; just busy. Don't fall back to the X API.
             except ChromeUnavailable as exc:
                 self.status["chrome"] = str(exc)
                 log.warning("%s", exc)
-        if not chrome_ok and s.x_bearer_token:
+            finally:
+                lock.release()
+        if not chrome_ok and s.x_bearer_token and s.x_enabled and not self.skip_x:
             x_sources = self._verify_x_sources(
                 lambda h: x_api.profile_info(h, s.x_bearer_token), sources, x_sources)
             for src in x_sources:
@@ -149,8 +148,70 @@ class Engine:
         self._notify_events()
         return dict(counts)
 
+    # ------------------------------------------------------------------ X
+    def _x_state(self) -> dict[str, Any]:
+        p = data_dir() / "x_state.json"
+        try:
+            return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def _save_x_state(self, st: dict[str, Any]) -> None:
+        (data_dir() / "x_state.json").write_text(json.dumps(st, indent=2), encoding="utf-8")
+
+    def _collect_x_chrome(self, chrome: ChromeLive, sources: list[dict[str, Any]],
+                          x_sources: list[dict[str, Any]]) -> int:
+        """Read X gently: the Following timeline, plus a few profile reads per refresh.
+
+        Stops at the first sign of an X rate limit and backs off for an hour.
+        """
+        s = self.settings
+        st = self._x_state()
+        if st.get("backoff_until", "") > now_iso():
+            self.status["x"] = f"paused until {st['backoff_until']} (X rate limit)"
+            return 0
+        gap = max(5, s.x_seconds_between_pages)
+        new = 0
+        try:
+            # 1. Following timeline: one page covers every account you follow.
+            by_handle = {str(x.get("handle", "")).lower(): x for x in x_sources if x.get("verified_at")}
+            groups: dict[str, list[dict[str, Any]]] = {}
+            for p in chrome.read_x_following():
+                m = re.search(r"x\.com/([^/]+)/status/", p.get("url", ""))
+                h = m.group(1).lower() if m else ""
+                groups.setdefault(h if h in by_handle else "", []).append(p)
+            for h, posts in groups.items():
+                src = by_handle.get(h) or {"id": "x:following", "kind": "x", "name": "X Following timeline"}
+                new += self._ingest(parse_x_posts(src, posts))
+            self.status["x:following"] = "ok (chrome)"
+
+            # 2. Identity checks for a few new accounts.
+            todo = [x for x in x_sources if not x.get("verified_at")][: s.x_verifications_per_cycle]
+            if todo:
+                time.sleep(gap)
+                self._verify_x_sources(chrome.x_profile_info, sources, todo, gap)
+
+            # 3. A few direct profile reads, least recently read first.
+            last = st.setdefault("last_read", {})
+            ready = [x for x in x_sources if x.get("verified_at") and x.get("enabled")]
+            ready.sort(key=lambda x: last.get(x["id"], ""))
+            for src in ready[: s.x_profile_reads_per_cycle]:
+                time.sleep(gap)
+                new += self._ingest(parse_x_posts(src, chrome.read_x_profile(src["handle"])))
+                last[src["id"]] = now_iso()
+                self.status[src["id"]] = "ok (chrome)"
+            self.status["x"] = "ok"
+        except XRateLimited as exc:
+            until = (datetime.now(timezone.utc) + timedelta(hours=1)).replace(microsecond=0).isoformat()
+            st["backoff_until"] = until
+            self.status["x"] = f"{exc}; pausing X until {until}"
+            self.notify("X reading paused", "X asked to slow down, so Investor Helper will skip X for an hour.")
+        finally:
+            self._save_x_state(st)
+        return new
+
     def _verify_x_sources(self, profile_info: Callable[[str], dict[str, Any]], sources: list[dict[str, Any]],
-                          x_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+                          x_sources: list[dict[str, Any]], gap: float = 1.5) -> list[dict[str, Any]]:
         """Check every not-yet-verified X account is the outlet it claims to be.
 
         Private, missing or mismatched accounts are disabled and reported. The app
@@ -163,6 +224,10 @@ class Engine:
                 continue
             try:
                 ok, reason = verify_x_profile(src, profile_info(src["handle"]))
+            except XRateLimited:
+                if changed:
+                    save_sources(sources)
+                raise
             except Exception as exc:
                 self.status[src["id"]] = f"not verified yet: {exc}"[:200]
                 continue
@@ -175,7 +240,7 @@ class Engine:
                 src["disabled_reason"] = f"failed check: {reason}"
                 self.status[src["id"]] = src["disabled_reason"]
                 self.notify("X source skipped", reason)
-            time.sleep(1.5)
+            time.sleep(gap)
         if changed:
             save_sources(sources)
         return ok_sources
