@@ -142,7 +142,8 @@ class ChromeLive:
         ctx = browser.contexts[0] if browser.contexts else browser.new_context()
         self._page = ctx.new_page()
         self._page.set_default_navigation_timeout(self.nav_timeout_ms)
-        self._page.route("**/*", _guard_route)
+        # Only Trading212 traffic goes through the guard, so X pages load at full speed.
+        self._page.route(re.compile(r"https?://([^/]*\.)?trading212\.com/"), _guard_route)
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -175,7 +176,7 @@ class ChromeLive:
             if len(posts) >= max_posts:
                 break
             page.mouse.wheel(0, 2500)  # scrolling reads more; it does not interact with content
-            time.sleep(1.2)
+            page.wait_for_timeout(1200)  # (time.sleep would freeze Playwright's event loop)
         return list(posts.values())[:max_posts]
 
     def read_x_profile(self, handle: str, max_posts: int = 15) -> list[dict[str, Any]]:
@@ -199,28 +200,49 @@ class ChromeLive:
         return self._read_x("https://x.com/home", max_posts)
 
     # ------------------------------------------------------------ Trading212
-    def read_trading212(self, wait_s: float = 12.0) -> dict[str, Any]:
-        """Open the Trading212 web app and read account value. Never clicks anything."""
+    def read_trading212(self, wait_s: float = 25.0) -> dict[str, Any]:
+        """Open the Trading212 web app and read the Invest account. Never clicks anything.
+
+        The web app fetches its own account summaries on load; we only read
+        those responses (GET /rest/v1/customers/accounts/summary and the
+        app-initiated multi-accounts summary). We never send requests ourselves.
+        """
         page = self._page
-        captured: list[Any] = []
+        responses: list[Any] = []
+        wanted = ("/customers/accounts/summary", "/multi-accounts/summary")
 
         def on_response(resp: Any) -> None:
-            try:
-                if "trading212.com" in resp.url and "json" in (resp.headers.get("content-type") or ""):
-                    captured.append(resp.json())
-            except Exception:
-                pass
+            if "trading212.com" in resp.url and any(w in resp.url for w in wanted):
+                responses.append(resp)
 
         page.on("response", on_response)
-        page.goto("https://app.trading212.com/", wait_until="domcontentloaded")
-        deadline = time.time() + wait_s
-        while time.time() < deadline:
-            time.sleep(1)
-        text = page.inner_text("body")
-        page.remove_listener("response", on_response)
-        if "log in" in text.lower()[:2000] and "account value" not in text.lower():
-            raise ChromeUnavailable("Trading212 is not logged in in this Chrome profile.")
-        return parse_trading212(captured, text)
+        try:
+            page.goto("https://app.trading212.com/", wait_until="domcontentloaded")
+            waited = 0
+            # Must use wait_for_timeout: it keeps Playwright's event loop running.
+            while waited < wait_s * 1000:
+                page.wait_for_timeout(1000)
+                waited += 1000
+                urls = " ".join(r.url for r in responses)
+                if all(w in urls for w in wanted) and waited >= 4000:
+                    break
+            captured = []
+            for r in responses:
+                try:
+                    captured.append({"url": r.url, "json": r.json()})
+                except Exception:
+                    pass
+            text = page.inner_text("body")
+        finally:
+            page.remove_listener("response", on_response)
+        snap = parse_trading212(captured, text)
+        if snap.get("total") is None:
+            low = text.lower()[:3000]
+            if "log in" in low or "sign in" in low:
+                raise ChromeUnavailable("Trading212 is not logged in in this Chrome profile.")
+            raise ChromeUnavailable(
+                f"Trading212 loaded but no account summary was seen ({len(captured)} summary responses).")
+        return snap
 
 
 def release_page(page: Any) -> None:
@@ -275,63 +297,48 @@ def _walk(o: Any):
 
 
 def parse_trading212(captured: list[Any], body_text: str) -> dict[str, Any]:
-    """Pull account figures from the web app's own JSON, falling back to page text."""
+    """Pull the Invest (EQUITY) account figures from the web app's own JSON.
+
+    `captured` holds {"url", "json"} entries. Shapes (live.services.trading212.com):
+    * /rest/v1/equity/multi-accounts/summary:
+      accountsByType.EQUITY.{accountCurrency, cash.{total, freeForStocks, stockInvestment, ppl, result}}
+    * /rest/v1/customers/accounts/summary:
+      LIVE.currentAccounts[] {tradingType: EQUITY|ISA|CFD, summaryValue.{value, currencyCode}}
+    Only the EQUITY (Invest) account is used; ISA and CFD are ignored.
+    """
     snap: dict[str, Any] = {"source": "chrome", "positions": []}
-    for blob in captured:
-        for d in _walk(blob):
-            keys = set(d)
-            if "total" in keys and keys & {"free", "invested", "ppl", "result", "freeForInvest"}:
-                try:
-                    snap.setdefault("total", float(d["total"]))
-                    if "free" in d or "freeForInvest" in d:
-                        snap.setdefault("cash", float(d.get("free", d.get("freeForInvest"))))
-                    if "invested" in d:
-                        snap.setdefault("invested", float(d["invested"]))
-                    if "ppl" in d:
-                        snap.setdefault("ppl", float(d["ppl"]))
-                except (TypeError, ValueError):
-                    pass
-            if "currencyCode" in keys and isinstance(d.get("currencyCode"), str):
-                snap.setdefault("currency", d["currencyCode"])
-            if {"ticker", "quantity"} <= keys and ("currentPrice" in keys or "averagePrice" in keys):
-                try:
-                    from .trading212 import plain_ticker
-                    qty = float(d["quantity"])
-                    cur = float(d.get("currentPrice") or 0)
-                    snap["positions"].append({
-                        "ticker": plain_ticker(str(d["ticker"])), "t212_ticker": d["ticker"],
-                        "quantity": qty, "average_price": float(d.get("averagePrice") or 0),
-                        "current_price": cur, "value": qty * cur, "ppl": float(d.get("ppl") or 0),
-                    })
-                except (TypeError, ValueError):
-                    pass
-    if "total" not in snap:
-        # Fallback: the number shown next to "Account value" / "Total".
-        m = re.search(r"(?:account value|total value|total)\s*[\n:]*\s*([£$€])\s?([\d,]+(?:\.\d{1,2})?)",
-                      body_text, re.I)
-        if m:
-            snap["total"] = float(m.group(2).replace(",", ""))
-            snap.setdefault("currency", {"£": "GBP", "$": "USD", "€": "EUR"}[m.group(1)])
-    # De-duplicate positions captured from several responses.
-    seen = {}
-    for p in snap["positions"]:
-        seen[p["t212_ticker"]] = p
-    snap["positions"] = list(seen.values())
-    return snap
 
-
-def check_connection(cdp_url: str = "http://localhost:9222") -> str:
-    """Connect, report what we see, disconnect. Opens no pages."""
-    from playwright.sync_api import sync_playwright
-    with sync_playwright() as pw:
+    def num(v: Any) -> float | None:
         try:
-            browser = pw.chromium.connect_over_cdp(cdp_url, timeout=8000)
-        except Exception as exc:
-            raise ChromeUnavailable(
-                f"Could not reach Chrome at {cdp_url}. Start Chrome with --remote-debugging-port=9222."
-            ) from exc
-        pages = [p for c in browser.contexts for p in c.pages]
-        urls = " ".join(p.url for p in pages)
-        return (f"Connected to Chrome {browser.version} with {len(pages)} tabs open. "
-                f"X tab open: {'yes' if 'x.com' in urls else 'no'}; "
-                f"Trading212 tab open: {'yes' if 'trading212.com' in urls else 'no'}.")
+            return None if v is None else float(v)
+        except (TypeError, ValueError):
+            return None
+
+    for entry in captured:
+        url = entry.get("url", "") if isinstance(entry, dict) else ""
+        data = entry.get("json") if isinstance(entry, dict) and "json" in entry else entry
+        if not isinstance(data, dict):
+            continue
+        if "multi-accounts/summary" in url or "accountsByType" in data:
+            eq = (data.get("accountsByType") or {}).get("EQUITY") or {}
+            cash = eq.get("cash") or {}
+            if num(cash.get("total")) is not None:
+                snap["total"] = num(cash.get("total"))
+                snap["cash"] = num(cash.get("freeForStocks"))
+                snap["invested"] = num(cash.get("stockInvestment"))
+                snap["ppl"] = num(cash.get("ppl"))
+                snap["result"] = num(cash.get("result"))
+                snap["currency"] = eq.get("accountCurrency") or data.get("activeAccountCurrency", "")
+        elif "accounts/summary" in url or "LIVE" in data:
+            for acc in ((data.get("LIVE") or {}).get("currentAccounts") or []):
+                sv = acc.get("summaryValue") or {}
+                if acc.get("tradingType") == "EQUITY" and num(sv.get("value")) is not None:
+                    snap.setdefault("total_from_overview", num(sv.get("value")))
+                    snap.setdefault("currency_from_overview", sv.get("currencyCode", ""))
+
+    if snap.get("total") is None and snap.get("total_from_overview") is not None:
+        snap["total"] = snap["total_from_overview"]
+        snap["currency"] = snap.get("currency_from_overview", "")
+    snap.pop("total_from_overview", None)
+    snap.pop("currency_from_overview", None)
+    return snap

@@ -62,12 +62,24 @@ def test_trading212_is_read_only():
 
 
 def test_chrome_parsers():
-    snap = parse_trading212([{"cash": {"total": 1234.5, "free": 34.5, "invested": 1200, "ppl": 12}},
-                             {"currencyCode": "GBP"},
-                             [{"ticker": "MSFT_US_EQ", "quantity": 1, "averagePrice": 300, "currentPrice": 400}]], "")
-    assert snap["total"] == 1234.5 and snap["currency"] == "GBP" and snap["positions"][0]["ticker"] == "MSFT"
-    fallback = parse_trading212([], "Home\nAccount value\n£2,500.75\nInvest")
-    assert fallback["total"] == 2500.75 and fallback["currency"] == "GBP"
+    multi = {"url": "https://live.services.trading212.com/rest/v1/equity/multi-accounts/summary", "json": {
+        "activeAccountCurrency": "GBP",
+        "cash": {"total": 9999, "freeForStocks": 1, "stockInvestment": 1, "ppl": 0},
+        "accountsByType": {
+            "ISA": {"accountCurrency": "GBP", "cash": {"total": 500, "freeForStocks": 500, "stockInvestment": 0, "ppl": 0}},
+            "EQUITY": {"accountCurrency": "GBP", "cash": {"total": 1234.5, "freeForStocks": 34.5,
+                                                           "stockInvestment": 1200, "ppl": 12, "result": 3}}}}}
+    overview = {"url": "https://live.services.trading212.com/rest/v1/customers/accounts/summary", "json": {
+        "LIVE": {"netWorth": {"value": 2000, "currencyCode": "GBP"}, "currentAccounts": [
+            {"tradingType": "ISA", "summaryValue": {"type": "BALANCE", "value": 500, "currencyCode": "GBP"}},
+            {"tradingType": "EQUITY", "summaryValue": {"type": "BALANCE", "value": 1230, "currencyCode": "GBP"}}]},
+        "DEMO": {"netWorth": {"value": None}}}}
+    snap = parse_trading212([overview, multi], "")
+    assert snap["total"] == 1234.5 and snap["cash"] == 34.5 and snap["invested"] == 1200
+    assert snap["ppl"] == 12 and snap["currency"] == "GBP"
+    only_overview = parse_trading212([overview], "")
+    assert only_overview["total"] == 1230 and only_overview["currency"] == "GBP"
+    assert parse_trading212([], "Account value £5").get("total") is None
     posts = parse_x_posts({"id": "x:Reuters"}, [
         {"text": "$AAPL beats. via @ReutersBiz", "time": "2026-11-05T10:00:00.000Z",
          "url": "https://x.com/Reuters/status/123", "links": []},
