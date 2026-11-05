@@ -1,0 +1,4 @@
+requests>=2.31
+feedparser>=6.0.11
+PySide6>=6.7
+playwright>=1.47

@@ -1,0 +1,187 @@
+"""Settings and source lists, stored under the user's app-data folder.
+
+API keys live only in `settings.json` on the user's machine and are never
+checked into the repository or sent anywhere except the API they belong to.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Any
+
+APP_DIR_NAME = "InvestorHelper"
+
+
+def data_dir() -> Path:
+    """Per-user writable folder (``%APPDATA%\\InvestorHelper`` on Windows)."""
+    override = os.environ.get("INVESTOR_HELPER_HOME")
+    if override:
+        base = Path(override)
+    elif sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home())) / APP_DIR_NAME
+    else:
+        base = Path.home() / ".investor_helper"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def bundled_path(*parts: str) -> Path:
+    """Path to a file shipped with the app (works inside a PyInstaller bundle)."""
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    return root.joinpath(*parts)
+
+
+@dataclass
+class Settings:
+    # Trading212: read-only use. Only GET endpoints are ever called.
+    trading212_api_key: str = ""
+    # Newer Trading212 keys come as key + secret (HTTP Basic). Leave blank for old single keys.
+    trading212_api_secret: str = ""
+    trading212_environment: str = "live"  # "live" or "demo"
+    # Live access through the user's own logged-in Chrome (started with
+    # --remote-debugging-port=9222). Used for X and Trading212; read-only.
+    use_chrome_cdp: bool = True
+    chrome_cdp_url: str = "http://localhost:9222"
+    # X (Twitter) API v2 bearer token. Optional; RSS fallback is used without it.
+    x_bearer_token: str = ""
+    # SEC requires a descriptive User-Agent with contact info.
+    sec_user_agent: str = "InvestorHelper/0.1 (personal research; contact: you@example.com)"
+    # Scheduling
+    refresh_minutes: int = 30
+    report_hour_local: int = 7  # daily thread report time
+    # Prediction
+    horizon_days: int = 3
+    max_report_items: int = 15
+    # Watchlist tickers to always score (besides those mentioned in news)
+    watchlist: list[str] = field(default_factory=lambda: ["AAPL", "MSFT", "NVDA", "SPY"])
+    # Notifications
+    notify_events: bool = True
+    notify_reports: bool = True
+    notify_min_score: float = 0.6
+    # Source rotation: disable sources whose hit rate stays poor, trial new ones.
+    auto_rotate_sources: bool = True
+    # User-defined events: [{"title": ..., "starts_at": "2026-11-12T14:00:00Z", "url": ...}]
+    custom_events: list[dict] = field(default_factory=list)
+
+    def to_json(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_json(cls, raw: dict[str, Any]) -> "Settings":
+        known = {k: v for k, v in raw.items() if k in cls.__dataclass_fields__}
+        return cls(**known)
+
+
+def settings_path() -> Path:
+    return data_dir() / "settings.json"
+
+
+def load_settings() -> Settings:
+    p = settings_path()
+    if p.exists():
+        try:
+            return Settings.from_json(json.loads(p.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return Settings()
+
+
+def save_settings(s: Settings) -> None:
+    settings_path().write_text(json.dumps(s.to_json(), indent=2), encoding="utf-8")
+
+
+# ---------------------------------------------------------------- sources.json
+# Each source: {"id", "kind", "name", "url"|"handle", "enabled", "tags"}
+#   kind: "rss" | "x" | "edgar" | "ipo" | "page"
+DEFAULT_SOURCES: list[dict[str, Any]] = [
+    {"id": "rss:reuters-business", "kind": "rss", "name": "Reuters Business",
+     "url": "https://feeds.reuters.com/reuters/businessNews", "enabled": True},
+    {"id": "rss:cnbc-top", "kind": "rss", "name": "CNBC Top News",
+     "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "enabled": True},
+    {"id": "rss:cnbc-earnings", "kind": "rss", "name": "CNBC Earnings",
+     "url": "https://www.cnbc.com/id/15839135/device/rss/rss.html", "enabled": True},
+    {"id": "rss:marketwatch-top", "kind": "rss", "name": "MarketWatch Top Stories",
+     "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories", "enabled": True},
+    {"id": "rss:wsj-markets", "kind": "rss", "name": "WSJ Markets",
+     "url": "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain", "enabled": True},
+    {"id": "rss:ft-companies", "kind": "rss", "name": "Financial Times Companies",
+     "url": "https://www.ft.com/companies?format=rss", "enabled": True},
+    {"id": "rss:sec-press", "kind": "rss", "name": "SEC Press Releases",
+     "url": "https://www.sec.gov/news/pressreleases.rss", "enabled": True},
+    {"id": "rss:fed-press", "kind": "rss", "name": "Federal Reserve Press Releases",
+     "url": "https://www.federalreserve.gov/feeds/press_all.xml", "enabled": True},
+    {"id": "rss:bls", "kind": "rss", "name": "US Bureau of Labor Statistics",
+     "url": "https://www.bls.gov/feed/bls_latest.rss", "enabled": True},
+    {"id": "rss:bbc-business", "kind": "rss", "name": "BBC Business",
+     "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "enabled": True},
+    {"id": "rss:investing-com-news", "kind": "rss", "name": "Investing.com Stock Market News",
+     "url": "https://www.investing.com/rss/news_25.rss", "enabled": True},
+    # X accounts (official outlets). Read live through Chrome, or the X API if a token is set.
+    {"id": "x:Reuters", "kind": "x", "name": "Reuters", "handle": "Reuters", "enabled": True},
+    {"id": "x:CNBC", "kind": "x", "name": "CNBC", "handle": "CNBC", "enabled": True},
+    {"id": "x:business", "kind": "x", "name": "Bloomberg", "handle": "business", "enabled": True},
+    {"id": "x:WSJmarkets", "kind": "x", "name": "WSJ Markets", "handle": "WSJmarkets", "enabled": True},
+    {"id": "x:FT", "kind": "x", "name": "Financial Times", "handle": "FT", "enabled": True},
+    {"id": "x:SECGov", "kind": "x", "name": "U.S. SEC", "handle": "SECGov", "enabled": True},
+    {"id": "x:federalreserve", "kind": "x", "name": "Federal Reserve", "handle": "federalreserve", "enabled": True},
+    {"id": "x:MarketWatch", "kind": "x", "name": "MarketWatch", "handle": "MarketWatch", "enabled": True},
+    # EDGAR and IPO feeds are built in; these rows let the user toggle them.
+    {"id": "edgar:recent", "kind": "edgar", "name": "SEC EDGAR recent filings (8-K, 10-Q, 10-K, Form 4)",
+     "forms": ["8-K", "10-Q", "10-K", "4", "S-1", "424B4", "SC 13D", "SC 13G"], "enabled": True},
+    {"id": "ipo:edgar", "kind": "ipo", "name": "IPO calendar (Nasdaq) + EDGAR S-1/424B4 filings", "enabled": True},
+    # Tracked pages / events. "watch" pages notify when the content changes.
+    {"id": "page:fomc-calendar", "kind": "page", "name": "FOMC meeting calendar",
+     "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm", "enabled": True},
+    {"id": "page:bls-schedule", "kind": "page", "name": "BLS release schedule",
+     "url": "https://www.bls.gov/schedule/news_release/", "enabled": True},
+]
+
+
+# Vetted official outlets held in reserve. When auto-rotation drops a poorly
+# performing source of the same kind, the next unused one here is trialled.
+CANDIDATE_SOURCES: list[dict[str, Any]] = [
+    {"id": "rss:cnbc-markets", "kind": "rss", "name": "CNBC Markets",
+     "url": "https://www.cnbc.com/id/20910258/device/rss/rss.html", "enabled": True},
+    {"id": "rss:marketwatch-pulse", "kind": "rss", "name": "MarketWatch Market Pulse",
+     "url": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse", "enabled": True},
+    {"id": "rss:yahoo-finance", "kind": "rss", "name": "Yahoo Finance News",
+     "url": "https://finance.yahoo.com/news/rssindex", "enabled": True},
+    {"id": "rss:nasdaq-markets", "kind": "rss", "name": "Nasdaq Markets",
+     "url": "https://www.nasdaq.com/feed/rssoutbound?category=Markets", "enabled": True},
+    {"id": "rss:seekingalpha-currents", "kind": "rss", "name": "Seeking Alpha Market Currents",
+     "url": "https://seekingalpha.com/market_currents.xml", "enabled": True},
+    {"id": "rss:ecb-press", "kind": "rss", "name": "European Central Bank Press",
+     "url": "https://www.ecb.europa.eu/rss/press.html", "enabled": True},
+    {"id": "rss:boe-news", "kind": "rss", "name": "Bank of England News",
+     "url": "https://www.bankofengland.co.uk/rss/news", "enabled": True},
+    {"id": "x:YahooFinance", "kind": "x", "name": "Yahoo Finance", "handle": "YahooFinance", "enabled": True},
+    {"id": "x:Benzinga", "kind": "x", "name": "Benzinga", "handle": "Benzinga", "enabled": True},
+    {"id": "x:EconomicTimes", "kind": "x", "name": "Economic Times", "handle": "EconomicTimes", "enabled": True},
+    {"id": "x:FinancialTimes", "kind": "x", "name": "FT Markets", "handle": "FTMarkets", "enabled": True},
+    {"id": "x:BloombergTV", "kind": "x", "name": "Bloomberg TV", "handle": "BloombergTV", "enabled": True},
+    {"id": "x:ReutersBiz", "kind": "x", "name": "Reuters Business", "handle": "ReutersBiz", "enabled": True},
+    {"id": "x:NasdaqExchange", "kind": "x", "name": "Nasdaq", "handle": "Nasdaq", "enabled": True},
+    {"id": "x:NYSE", "kind": "x", "name": "NYSE", "handle": "NYSE", "enabled": True},
+]
+
+
+def sources_path() -> Path:
+    return data_dir() / "sources.json"
+
+
+def load_sources() -> list[dict[str, Any]]:
+    p = sources_path()
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    save_sources(DEFAULT_SOURCES)
+    return [dict(s) for s in DEFAULT_SOURCES]
+
+
+def save_sources(sources: list[dict[str, Any]]) -> None:
+    sources_path().write_text(json.dumps(sources, indent=2), encoding="utf-8")
