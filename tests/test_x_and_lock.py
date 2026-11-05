@@ -103,3 +103,13 @@ def test_retag_fixes_old_tags(tmp_path, monkeypatch):
     assert eng.retag_if_rules_changed() == 1
     assert eng.db.recent_items("2000-01-01")[0]["tickers"] == []
     assert eng.retag_if_rules_changed() == 0
+
+
+def test_lock_from_dead_process_is_taken_over(tmp_path):
+    import subprocess, sys, datetime
+    p = tmp_path / "chrome.lock"
+    proc = subprocess.Popen([sys.executable, "-c", "pass"]); proc.wait()
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    p.write_text(json.dumps({"owner": "investor-helper", "pid": proc.pid, "started_at": now}))
+    with ChromeLock(p, owner="me"):
+        assert json.loads(p.read_text())["owner"] == "me"

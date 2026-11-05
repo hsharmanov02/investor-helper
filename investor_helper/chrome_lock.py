@@ -6,7 +6,8 @@ Path: ``%USERPROFILE%\\InvestorHelper\\chrome.lock`` (override with the
     {"owner": "investor-helper", "pid": 1234, "started_at": "2026-11-05T20:50:00+00:00"}
 
 Create it (exclusively) before using port 9222, delete it afterwards. A lock
-older than 15 minutes is stale and may be taken over.
+older than 15 minutes, or whose pid is no longer running, is stale and may
+be taken over.
 """
 from __future__ import annotations
 
@@ -21,6 +22,33 @@ OWNER = "investor-helper"
 
 def default_path() -> Path:
     return Path(os.environ.get("USERPROFILE") or Path.home()) / "InvestorHelper" / "chrome.lock"
+
+
+def pid_alive(pid: int) -> bool:
+    """True if a process with this pid exists. Never signals or kills anything."""
+    if not isinstance(pid, int) or pid <= 0:
+        return True  # unknown: assume alive, rely on the 15-minute timeout
+    if os.name == "nt":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return ctypes.GetLastError() == 5  # access denied means it exists
+        try:
+            code = ctypes.c_ulong()
+            k32.GetExitCodeProcess(h, ctypes.byref(code))
+            return code.value == STILL_ACTIVE
+        finally:
+            k32.CloseHandle(h)
+    try:
+        os.kill(pid, 0)  # POSIX: signal 0 only checks existence
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 class ChromeBusy(RuntimeError):
@@ -62,7 +90,7 @@ class ChromeLock:
                 return
             except FileExistsError:
                 info = self._read()
-                if self._age(info) > STALE_SECONDS:
+                if self._age(info) > STALE_SECONDS or not pid_alive(info.get("pid", -1)):
                     try:
                         self.path.unlink()
                     except OSError:
