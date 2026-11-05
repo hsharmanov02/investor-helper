@@ -125,7 +125,7 @@ class ChromeLive:
     def __exit__(self, *exc: Any) -> None:
         try:
             if self._page is not None:
-                self._page.close()
+                release_page(self._page)
         except Exception:
             pass
         # Stopping Playwright only drops our connection; Chrome keeps running.
@@ -197,6 +197,16 @@ class ChromeLive:
         if "log in" in text.lower()[:2000] and "account value" not in text.lower():
             raise ChromeUnavailable("Trading212 is not logged in in this Chrome profile.")
         return parse_trading212(captured, text)
+
+
+def release_page(page: Any) -> None:
+    """Close our tab, unless it is the last normal tab (closing that would quit Chrome)."""
+    others = [p for p in page.context.pages
+              if p is not page and not p.url.startswith(("chrome-extension://", "devtools://"))]
+    if others:
+        page.close()
+    else:
+        page.goto("about:blank")
 
 
 def _guard_route(route: Any) -> None:
