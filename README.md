@@ -25,6 +25,12 @@ order or click code is ever added. You make every decision.
 
 ## Install
 
+**Build it yourself (no GitHub needed):** unzip the source, double-click
+`BUILD_EXE.bat`. It installs Python 3.12 if missing (via winget), runs the
+tests and leaves `InvestorHelper.exe` in the same folder.
+
+**Or from GitHub:**
+
 1. Download `InvestorHelper.exe` from the latest GitHub Actions run (Actions tab,
    "Build Windows EXE", Artifacts) or from Releases.
 2. Put it anywhere and double-click it. Windows SmartScreen may warn because the
