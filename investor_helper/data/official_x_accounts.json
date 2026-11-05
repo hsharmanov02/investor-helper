@@ -7,262 +7,302 @@
       "handle": "Reuters",
       "name": "Reuters",
       "category": "wire_news",
-      "weight": 0.9
+      "weight": 0.9,
+      "follow_status": "followed"
     },
     {
       "handle": "ReutersBiz",
       "name": "Reuters Business",
       "category": "wire_news",
-      "weight": 0.9
+      "weight": 0.9,
+      "follow_status": "followed"
     },
     {
       "handle": "business",
       "name": "Bloomberg",
       "category": "wire_news",
-      "weight": 0.9
+      "weight": 0.9,
+      "follow_status": "followed"
     },
     {
       "handle": "markets",
       "name": "Bloomberg Markets",
       "category": "wire_news",
-      "weight": 0.9
+      "weight": 0.9,
+      "follow_status": "followed"
     },
     {
       "handle": "WSJ",
       "name": "The Wall Street Journal",
       "category": "news",
-      "weight": 0.85
+      "weight": 0.85,
+      "follow_status": "followed"
     },
     {
       "handle": "WSJmarkets",
       "name": "WSJ Markets",
       "category": "news",
-      "weight": 0.85
+      "weight": 0.85,
+      "follow_status": "followed"
     },
     {
       "handle": "FT",
       "name": "Financial Times",
       "category": "news",
-      "weight": 0.85
+      "weight": 0.85,
+      "follow_status": "followed"
     },
     {
       "handle": "CNBC",
       "name": "CNBC",
       "category": "news",
-      "weight": 0.8
+      "weight": 0.8,
+      "follow_status": "followed"
     },
     {
       "handle": "CNBCnow",
       "name": "CNBC Now (breaking)",
       "category": "news",
-      "weight": 0.8
+      "weight": 0.8,
+      "follow_status": "followed"
     },
     {
       "handle": "SquawkCNBC",
       "name": "Squawk Box (CNBC)",
       "category": "news",
-      "weight": 0.6
+      "weight": 0.6,
+      "follow_status": "followed"
     },
     {
       "handle": "MarketWatch",
       "name": "MarketWatch",
       "category": "news",
-      "weight": 0.7
+      "weight": 0.7,
+      "follow_status": "followed"
     },
     {
       "handle": "YahooFinance",
       "name": "Yahoo Finance",
       "category": "news",
-      "weight": 0.65
+      "weight": 0.65,
+      "follow_status": "followed"
     },
     {
       "handle": "FoxBusiness",
       "name": "Fox Business",
       "category": "news",
-      "weight": 0.6
+      "weight": 0.6,
+      "follow_status": "followed"
     },
     {
       "handle": "BBCBusiness",
       "name": "BBC Business",
       "category": "news",
-      "weight": 0.6
+      "weight": 0.6,
+      "follow_status": "followed"
     },
     {
       "handle": "nytimesbusiness",
       "name": "NYT Business",
       "category": "news",
-      "weight": 0.6
+      "weight": 0.6,
+      "follow_status": "followed"
     },
     {
       "handle": "TheEconomist",
       "name": "The Economist",
       "category": "news",
-      "weight": 0.55
+      "weight": 0.55,
+      "follow_status": "followed"
     },
     {
       "handle": "Investingcom",
       "name": "Investing.com",
       "category": "aggregator",
-      "weight": 0.6
+      "weight": 0.6,
+      "follow_status": "followed"
     },
     {
       "handle": "Benzinga",
       "name": "Benzinga",
       "category": "aggregator",
-      "weight": 0.55
+      "weight": 0.55,
+      "follow_status": "followed"
     },
     {
       "handle": "SeekingAlpha",
       "name": "Seeking Alpha",
       "category": "aggregator",
-      "weight": 0.5
+      "weight": 0.5,
+      "follow_status": "followed"
     },
     {
       "handle": "NickTimiraos",
       "name": "Nick Timiraos (WSJ chief economics correspondent)",
       "category": "journalist",
-      "weight": 0.8
+      "weight": 0.8,
+      "follow_status": "followed"
     },
     {
       "handle": "carlquintanilla",
       "name": "Carl Quintanilla (CNBC anchor)",
       "category": "journalist",
-      "weight": 0.6
+      "weight": 0.6,
+      "follow_status": "skipped_badge_rule"
     },
     {
       "handle": "SECGov",
       "name": "U.S. Securities and Exchange Commission",
       "category": "regulator",
-      "weight": 0.95
+      "weight": 0.95,
+      "follow_status": "followed"
     },
     {
       "handle": "federalreserve",
       "name": "Federal Reserve",
       "category": "central_bank",
-      "weight": 0.95
+      "weight": 0.95,
+      "follow_status": "followed"
     },
     {
       "handle": "ecb",
       "name": "European Central Bank",
       "category": "central_bank",
-      "weight": 0.9
+      "weight": 0.9,
+      "follow_status": "followed"
     },
     {
       "handle": "bankofengland",
       "name": "Bank of England",
       "category": "central_bank",
-      "weight": 0.9
+      "weight": 0.9,
+      "follow_status": "followed"
     },
     {
       "handle": "USTreasury",
       "name": "U.S. Treasury",
       "category": "government",
-      "weight": 0.85
+      "weight": 0.85,
+      "follow_status": "followed"
     },
     {
       "handle": "BLS_gov",
       "name": "U.S. Bureau of Labor Statistics (CPI, jobs)",
       "category": "economic_data",
-      "weight": 0.9
+      "weight": 0.9,
+      "follow_status": "skipped_badge_rule"
     },
     {
       "handle": "BEA_News",
       "name": "U.S. Bureau of Economic Analysis (GDP, PCE)",
       "category": "economic_data",
-      "weight": 0.85
+      "weight": 0.85,
+      "follow_status": "followed"
     },
     {
       "handle": "EIAgov",
       "name": "U.S. Energy Information Administration",
       "category": "economic_data",
-      "weight": 0.8
+      "weight": 0.8,
+      "follow_status": "followed"
     },
     {
       "handle": "IMFNews",
       "name": "International Monetary Fund",
       "category": "institution",
-      "weight": 0.6
+      "weight": 0.6,
+      "follow_status": "followed"
     },
     {
       "handle": "CFTC",
       "name": "Commodity Futures Trading Commission",
       "category": "regulator",
-      "weight": 0.7
+      "weight": 0.7,
+      "follow_status": "followed"
     },
     {
       "handle": "FINRA",
       "name": "FINRA",
       "category": "regulator",
-      "weight": 0.6
+      "weight": 0.6,
+      "follow_status": "skipped_badge_rule"
     },
     {
       "handle": "TheFCA",
       "name": "UK Financial Conduct Authority",
       "category": "regulator",
-      "weight": 0.7
+      "weight": 0.7,
+      "follow_status": "followed"
     },
     {
       "handle": "NYSE",
       "name": "New York Stock Exchange",
       "category": "exchange",
-      "weight": 0.75
+      "weight": 0.75,
+      "follow_status": "followed"
     },
     {
       "handle": "Nasdaq",
       "name": "Nasdaq",
       "category": "exchange",
-      "weight": 0.75
+      "weight": 0.75,
+      "follow_status": "followed"
     },
     {
       "handle": "CMEGroup",
       "name": "CME Group",
       "category": "exchange",
-      "weight": 0.7
+      "weight": 0.7,
+      "follow_status": "followed"
     },
     {
       "handle": "LSEGplc",
       "name": "London Stock Exchange Group",
       "category": "exchange",
-      "weight": 0.65
+      "weight": 0.65,
+      "follow_status": "skipped_badge_rule"
     },
     {
       "handle": "euronext",
       "name": "Euronext",
       "category": "exchange",
       "weight": 0.6,
-      "verify": true
+      "follow_status": "skipped_badge_rule"
     },
     {
       "handle": "OPECSecretariat",
       "name": "OPEC",
       "category": "commodities",
-      "weight": 0.75
+      "weight": 0.75,
+      "follow_status": "skipped_badge_rule"
     },
     {
       "handle": "IEA",
       "name": "International Energy Agency",
       "category": "commodities",
-      "weight": 0.7
+      "weight": 0.7,
+      "follow_status": "followed"
     },
     {
       "handle": "IPOtweet",
       "name": "Renaissance Capital (IPO research)",
       "category": "ipo",
       "weight": 0.7,
-      "verify": true
+      "follow_status": "skipped_badge_rule"
     },
     {
       "handle": "eWhispers",
       "name": "Earnings Whispers (earnings calendar)",
       "category": "earnings_calendar",
       "weight": 0.6,
-      "verify": true
+      "follow_status": "followed"
     },
     {
       "handle": "Trading212",
       "name": "Trading 212 (your broker)",
       "category": "broker",
-      "weight": 0.5
+      "weight": 0.5,
+      "follow_status": "followed"
     }
   ],
   "excluded_on_purpose": [

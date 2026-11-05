@@ -26,6 +26,13 @@ Notify = Callable[[str, str], None]
 MAX_CONSECUTIVE_FAILURES = 5
 
 
+def _pending_follows(mode: str) -> list[dict[str, Any]]:
+    if mode != "approve":
+        return []
+    from . import x_follow
+    return x_follow.pending_summary()
+
+
 class Engine:
     def __init__(self, db: Database | None = None, settings: Settings | None = None,
                  notify: Notify | None = None, finder: TickerFinder | None = None):
@@ -38,6 +45,7 @@ class Engine:
         self.ipos: list[dict[str, Any]] = []
         self.rotation: list[str] = []
         self.skip_x = False
+        self.follow_log: list[str] = []
 
     # ------------------------------------------------------------- helpers
     @property
@@ -119,6 +127,16 @@ class Engine:
                     chrome_ok = True
                     if s.x_enabled and not self.skip_x:
                         counts["x"] += self._collect_x_chrome(chrome, sources, x_sources)
+                        if s.x_follow_mode != "off" and not str(self.status.get("x", "")).startswith(("paused", "stopped")) \
+                                and "pausing" not in str(self.status.get("x", "")):
+                            try:
+                                from . import x_follow
+                                self.follow_log = x_follow.run(
+                                    chrome._page, sources, self.db.get_weights(), s.x_follow_mode, self.notify,
+                                    exceptions=set(s.x_follow_exceptions))
+                            except Exception as exc:
+                                log.warning("X follow management failed: %s", exc)
+                                self.status["x_follow"] = f"error: {exc}"[:200]
                     if not s.trading212_api_key:
                         try:
                             account = chrome.read_trading212()
@@ -411,6 +429,7 @@ class Engine:
             account=self.last_account, account_prev=account_prev, weights=weights_full,
             source_names=names, stats=stats, rotation=self.rotation,
             suggestions=learner.suggest_handles(items, sources, weights_full),
+            follow_log=self.follow_log, follow_pending=_pending_follows(s.x_follow_mode),
         )
         self.db.add_report(md)
         out = data_dir() / "reports"

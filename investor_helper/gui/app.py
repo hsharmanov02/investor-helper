@@ -296,7 +296,8 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         for label, fn in (("Toggle enabled", self._toggle_source), ("Add X account", self._add_x),
                           ("Add RSS feed", self._add_rss), ("Add page to watch", self._add_page),
-                          ("Remove", self._remove_source)):
+                          ("Remove", self._remove_source),
+                          ("Approve X follow changes", self._approve_follows)):
             b = QPushButton(label)
             b.clicked.connect(fn)
             row.addWidget(b)
@@ -369,6 +370,17 @@ class MainWindow(QMainWindow):
             self._add({"id": f"page:{abs(hash(url)) % 10**8}", "kind": "page", "name": name or url,
                        "url": url.strip(), "enabled": True})
 
+    def _approve_follows(self) -> None:
+        from .. import x_follow
+        pending = x_follow.pending_summary()
+        if not pending:
+            QMessageBox.information(self, APP_NAME, "No X follow changes are waiting for approval.")
+            return
+        text = "\n".join(f"{p['action']} @{p['handle']}: {p['reason']}" for p in pending)
+        if QMessageBox.question(self, APP_NAME, f"Approve these X follow changes?\n\n{text}") == QMessageBox.Yes:
+            x_follow.approve_all_pending()
+            self.status.showMessage("Approved; they will be made on the next refresh.")
+
     def _remove_source(self) -> None:
         sid = self._selected_id()
         if sid and QMessageBox.question(self, APP_NAME, f"Remove {sid}?") == QMessageBox.Yes:
@@ -400,6 +412,9 @@ class MainWindow(QMainWindow):
         self.f_horizon = QSpinBox()
         self.f_horizon.setRange(1, 10)
         self.f_horizon.setValue(s.horizon_days)
+        self.f_follow = QComboBox()
+        self.f_follow.addItems(["off", "approve", "auto"])
+        self.f_follow.setCurrentText(s.x_follow_mode)
         self.f_rotate = QCheckBox("Automatically replace sources that keep being wrong")
         self.f_rotate.setChecked(s.auto_rotate_sources)
         self.f_events = QPlainTextEdit(json.dumps(s.custom_events, indent=2))
@@ -421,6 +436,7 @@ class MainWindow(QMainWindow):
         f.addRow("Refresh every (minutes)", self.f_refresh)
         f.addRow("Prediction horizon (days)", self.f_horizon)
         f.addRow(self.f_rotate)
+        f.addRow("Manage my X follows", self.f_follow)
         f.addRow("My events (JSON)", self.f_events)
         save = QPushButton("Save settings")
         save.clicked.connect(self._save_settings)
@@ -453,6 +469,7 @@ class MainWindow(QMainWindow):
         s.refresh_minutes = self.f_refresh.value()
         s.horizon_days = self.f_horizon.value()
         s.auto_rotate_sources = self.f_rotate.isChecked()
+        s.x_follow_mode = self.f_follow.currentText()
         s.custom_events = events
         save_settings(s)
         self.worker.settings = s

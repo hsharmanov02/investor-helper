@@ -28,6 +28,7 @@ def build_report(*, ranked: list[TickerScore], horizon_days: int, max_items: int
                  account_prev: dict[str, Any] | None, weights: dict[str, dict[str, Any]],
                  source_names: dict[str, str], stats: dict[str, Any],
                  rotation: list[str], suggestions: list[tuple[str, int]],
+                 follow_log: list[str] | None = None, follow_pending: list[dict[str, Any]] | None = None,
                  now: datetime | None = None) -> str:
     now = now or datetime.now(timezone.utc)
     posts: list[str] = []
@@ -102,6 +103,12 @@ def build_report(*, ranked: list[TickerScore], horizon_days: int, max_items: int
         posts.append(f"**Source scoreboard** (1.0 = neutral)\n\nMost reliable: {top}\n\nLeast reliable: {bottom}")
     if rotation:
         posts.append("**Source changes**\n\n" + "\n".join(f"- {c}" for c in rotation))
+    if follow_log:
+        posts.append("**X follow changes**\n\n" + "\n".join(f"- {l}" for l in follow_log))
+    if follow_pending:
+        posts.append("**X follow changes waiting for your approval** (Sources tab > Approve)\n\n" + "\n".join(
+            f"- {p['action']} @{p['handle']}" + (f" (instead of @{p['old_handle']})" if p.get("old_handle") else "")
+            + f": {p['reason']}" for p in follow_pending))
     if suggestions:
         posts.append("**Accounts your best sources keep citing** (add them in Sources if you trust them)\n\n"
                      + ", ".join(f"@{h} ({n})" for h, n in suggestions))

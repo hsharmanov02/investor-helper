@@ -27,9 +27,25 @@ def _hits(files, patterns):
                 yield f"{f.name}:{text[:m.start()].count(chr(10)) + 1} matches {pat}"
 
 
+FOLLOW_MODULE = PKG / "x_follow.py"
+
+
 def test_no_order_or_interaction_code():
     assert list(_hits(PKG.rglob("*.py"), FORBIDDEN_ANYWHERE)) == []
     assert list(_hits((PKG / "sources").rglob("*.py"), FORBIDDEN_IN_SOURCES)) == []
+    # Clicking exists in exactly one module: the X follow manager.
+    others = [f for f in PKG.rglob("*.py") if f != FOLLOW_MODULE and f.parent.name != "gui"]
+    assert list(_hits(others, [r"\.click\("])) == []
+
+
+def test_follow_module_only_acts_on_x():
+    text = FOLLOW_MODULE.read_text(encoding="utf-8")
+    for url in re.findall(r"goto\(f?[\"']([^\"']+)", text):
+        assert url.startswith("https://x.com/"), url
+    assert not re.search(r"app\.trading212|live\.trading212|/equity/|\border", text, re.I)
+    # Every click is on a locator scoped to the profile's own handle or X's confirm sheet.
+    clicks = re.findall(r"(\w+)\.click\(", text)
+    assert set(clicks) <= {"btn", "confirm"}
 
 
 def test_full_cycle_offline(tmp_path, monkeypatch):

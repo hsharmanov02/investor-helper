@@ -54,6 +54,10 @@ class Settings:
     x_profile_reads_per_cycle: int = 4
     x_verifications_per_cycle: int = 4
     x_seconds_between_pages: int = 12
+    # Follow management on X: "off", "approve" (you approve each change) or "auto".
+    x_follow_mode: str = "off"
+    # Handles allowed despite failing the badge rule (you vouch for them).
+    x_follow_exceptions: list[str] = field(default_factory=list)
     # X (Twitter) API v2 bearer token. Optional; RSS fallback is used without it.
     x_bearer_token: str = ""
     # SEC requires a descriptive User-Agent with contact info.

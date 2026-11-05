@@ -7,7 +7,11 @@ look worth buying over the next few days and why.
 **It never buys or sells anything.** There is no order code in the app, the
 Trading212 client refuses any endpoint outside a read-only allow-list, the
 browser tab it controls blocks any order request, and a test fails the build if
-order or click code is ever added. You make every decision.
+order code is ever added. You make every decision.
+
+The only thing it can ever click is a Follow/Unfollow button on X, and only
+when you turn on **Manage my X follows** in Settings (off by default). That
+code lives in one module (`x_follow.py`), which tests restrict to x.com.
 
 ## What it does
 
@@ -48,13 +52,33 @@ The app reads X and Trading212 as you, through your normal Chrome profile.
 3. Make sure you are logged in to x.com and app.trading212.com in that Chrome.
 4. In Investor Helper, open Settings and press **Test Chrome connection**.
 
-The app opens one background tab, reads, and closes it. It does not touch your
-own tabs, never clicks, and never types.
+The app opens one background tab, reads, and closes it (never your last tab).
+It does not touch your own tabs and never types. While it uses Chrome it holds
+`%USERPROFILE%\InvestorHelper\chrome.lock`, so other scripts that honour the
+lock wait their turn.
 
 > Chrome 136 and later ignore the debug port on the default profile for
 > security reasons. If you update Chrome past 135, start it with a separate
 > profile folder instead, e.g. `--user-data-dir="%LOCALAPPDATA%\InvestorHelperChrome"`,
 > and log in to X and Trading212 once in that window.
+
+## Managing your X follows (optional)
+
+Settings > **Manage my X follows**: `off`, `approve` (changes wait for you to
+press "Approve X follow changes" in the Sources tab) or `auto`.
+
+The app follows sources you add or that it trials, and unfollows sources that
+keep being wrong. On a swap it follows the new account first and only then
+unfollows the old one. Rules it never breaks:
+
+* The display name must match the outlet (whole words), and the account must be public.
+* Badge rule: gold or grey OK. Blue only with the outlet's own website, 500k+
+  followers (100k for journalists) and joined before 2015. No badge means skip.
+  Exceptions you vouch for go in `x_follow_exceptions` in settings.json.
+* It only clicks the profile's own button, only on x.com, and only when you're
+  logged in as the expected account and the tab is still on that profile.
+* At most 3 changes a day, 20 to 40 s apart. Any rate-limit sign stops it for the day.
+* Every change and its reason appears in the report.
 
 ## Optional keys (Settings tab)
 
