@@ -142,6 +142,10 @@ class Database:
         rows = self._conn.execute(q, args).fetchall()
         return [_row_item(r) for r in rows]
 
+    def set_item_tickers(self, item_id: str, tickers: list[str]) -> None:
+        with self.tx() as c:
+            c.execute("UPDATE items SET tickers=? WHERE id=?", (json.dumps(tickers), item_id))
+
     # ------------------------------------------------------------ predictions
     def add_prediction(self, p: dict[str, Any]) -> int:
         with self.tx() as c:

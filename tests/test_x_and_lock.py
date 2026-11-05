@@ -89,3 +89,12 @@ def test_x_rate_limit_backs_off(tmp_path, monkeypatch):
     c = FakeChrome()
     eng._collect_x_chrome(c, src, src)
     assert c.calls == [] and "paused until" in eng.status["x"]
+
+
+def test_retag_fixes_old_tags(tmp_path, monkeypatch):
+    eng = _engine(tmp_path, monkeypatch)
+    eng.db.upsert_item({"id": "a", "source_id": "rss:x", "kind": "news", "title": "Jefferies raises AppLovin price target",
+                        "published_at": "2099-01-01T00:00:00+00:00", "tickers": ["TGT"]})
+    assert eng.retag_if_rules_changed() == 1
+    assert eng.db.recent_items("2000-01-01")[0]["tickers"] == []
+    assert eng.retag_if_rules_changed() == 0

@@ -305,8 +305,26 @@ class Engine:
         cache_p.write_text(json.dumps(cache), encoding="utf-8")
         return score
 
+    def retag_if_rules_changed(self, days: int = 14) -> int:
+        """Re-run ticker matching on stored news when the matching rules change."""
+        from .analysis.tickers import TAGGER_VERSION
+        marker = data_dir() / "tagger_version.txt"
+        if marker.exists() and marker.read_text(encoding="utf-8").strip() == str(TAGGER_VERSION):
+            return 0
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        n = 0
+        for it in self.db.recent_items(since, "news"):
+            new = self.finder.find(f"{it['title']} {it.get('summary', '')}")
+            if new != it["tickers"]:
+                self.db.set_item_tickers(it["id"], new)
+                n += 1
+        marker.write_text(str(TAGGER_VERSION), encoding="utf-8")
+        log.info("Re-tagged %d stored news items", n)
+        return n
+
     def analyze(self, max_tickers: int = 40) -> str:
         s = self.settings
+        self.retag_if_rules_changed()
         graded = learner.resolve_predictions(self.db, self._prices)
         weights_full = self.db.get_weights()
         sources = load_sources()

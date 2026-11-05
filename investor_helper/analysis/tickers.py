@@ -15,6 +15,9 @@ from ..config import data_dir
 
 log = logging.getLogger(__name__)
 
+# Bump when matching rules change so stored items are re-tagged.
+TAGGER_VERSION = 2
+
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
 # Common names that appear in headlines without the legal suffix.
