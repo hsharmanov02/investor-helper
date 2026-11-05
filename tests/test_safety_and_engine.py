@@ -15,7 +15,8 @@ FORBIDDEN_ANYWHERE = [
 ]
 # In the data sources (where the browser is driven): no clicking or typing at all.
 FORBIDDEN_IN_SOURCES = [r"\.click\(", r"\.fill\(", r"\.type\(", r"keyboard\.", r"\.press\(",
-                        r"\.check\(", r"\.select_option\(", r"\.dispatch_event\(", r"\.tap\("]
+                        r"\.check\(", r"\.select_option\(", r"\.dispatch_event\(", r"\.tap\(",
+                        r"-follow", r"/follow", r"friendships"]
 
 
 def _hits(files, patterns):

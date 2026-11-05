@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from investor_helper.sources import calendars, edgar, pages, prices, rss, x_api
-from investor_helper.sources.chrome_live import parse_trading212, parse_x_posts
+from investor_helper.sources.chrome_live import parse_trading212, parse_x_posts, verify_x_profile
 from investor_helper.sources.trading212 import (ReadOnlyTrading212, Trading212Error, plain_ticker,
                                                 summarize)
 
@@ -115,3 +115,15 @@ def test_price_parsers():
                                                   "indicators": {"quote": [{"close": [100.0, None]}]}}]}})
     assert y == [("2025-11-05", 100.0)]
     assert prices.parse_stooq("Date,Open,High,Low,Close,Volume\n2026-11-04,1,2,0.5,1.5,100\n") == [("2026-11-04", 1.5)]
+
+
+def test_x_profile_verification():
+    src = {"handle": "Reuters", "name": "Reuters", "expect": ["Reuters"]}
+    ok, why = verify_x_profile(src, {"exists": True, "name": "Reuters\n@Reuters", "bio": "Top news", "verified": True})
+    assert ok and "blue check" in why
+    ok, why = verify_x_profile(src, {"exists": True, "name": "Joe\n@Reuters", "bio": "my page", "protected": True})
+    assert not ok and "private" in why
+    ok, why = verify_x_profile(src, {"exists": True, "name": "Random Person\n@Reuters", "bio": "ex-Reuters reporter"})
+    assert not ok and "does not match" in why
+    ok, _ = verify_x_profile(src, {"exists": False})
+    assert not ok

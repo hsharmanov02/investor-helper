@@ -84,3 +84,15 @@ def fetch(source: dict[str, Any], token: str, max_results: int = 20) -> list[dic
         log.warning("X timeline %s failed: HTTP %s", source["handle"], r.status_code)
         return []
     return parse_tweets(source, r.json())
+
+
+def profile_info(handle: str, token: str) -> dict[str, Any]:
+    """Same shape as chrome_live.x_profile_info, from the API's user lookup."""
+    r = get(f"{API}/users/by/username/{handle}", headers={"Authorization": f"Bearer {token}"},
+            params={"user.fields": "name,description,protected,verified"})
+    data = r.json().get("data") if r.ok else None
+    if not data:
+        return {"exists": False}
+    return {"exists": True, "name": data.get("name", ""), "bio": data.get("description", ""),
+            "protected": bool(data.get("protected")), "verified": bool(data.get("verified")),
+            "suspended": False}

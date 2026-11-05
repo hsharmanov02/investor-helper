@@ -343,9 +343,17 @@ class MainWindow(QMainWindow):
 
     def _add_x(self) -> None:
         h, ok = QInputDialog.getText(self, "Add X account", "Handle (without @):")
-        if ok and h.strip():
-            h = h.strip().lstrip("@")
-            self._add({"id": f"x:{h}", "kind": "x", "name": f"@{h}", "handle": h, "enabled": True})
+        if not (ok and h.strip()):
+            return
+        h = h.strip().lstrip("@")
+        name, ok = QInputDialog.getText(
+            self, "Add X account",
+            "Outlet name that must appear in the profile's name or bio (e.g. Reuters).\n"
+            "The account is checked before it is read; private or mismatched accounts are skipped.\n"
+            "Investor Helper never follows accounts.")
+        if ok and name.strip():
+            self._add({"id": f"x:{h}", "kind": "x", "name": name.strip(), "handle": h,
+                       "expect": [name.strip()], "enabled": True})
 
     def _add_rss(self) -> None:
         url, ok = QInputDialog.getText(self, "Add RSS feed", "Feed URL:")

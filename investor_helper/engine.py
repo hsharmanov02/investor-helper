@@ -15,7 +15,7 @@ from .config import Settings, data_dir, load_settings, load_sources, save_source
 from .db import Database, now_iso
 from .report import build_report
 from .sources import calendars, edgar, pages, prices, rss, x_api
-from .sources.chrome_live import ChromeLive, ChromeUnavailable, parse_x_posts
+from .sources.chrome_live import ChromeLive, ChromeUnavailable, parse_x_posts, verify_x_profile
 from .sources.trading212 import ReadOnlyTrading212, Trading212Error
 
 log = logging.getLogger(__name__)
@@ -92,6 +92,7 @@ class Engine:
             try:
                 with ChromeLive(s.chrome_cdp_url) as chrome:
                     chrome_ok = True
+                    x_sources = self._verify_x_sources(chrome.x_profile_info, sources, x_sources)
                     for src in x_sources:
                         try:
                             posts = chrome.read_x_profile(src["handle"])
@@ -114,6 +115,8 @@ class Engine:
                 self.status["chrome"] = str(exc)
                 log.warning("%s", exc)
         if not chrome_ok and s.x_bearer_token:
+            x_sources = self._verify_x_sources(
+                lambda h: x_api.profile_info(h, s.x_bearer_token), sources, x_sources)
             for src in x_sources:
                 try:
                     counts["x"] += self._ingest(x_api.fetch(src, s.x_bearer_token))
@@ -145,6 +148,37 @@ class Engine:
                                       "tickers": [i["ticker"]] if i["ticker"] else []})
         self._notify_events()
         return dict(counts)
+
+    def _verify_x_sources(self, profile_info: Callable[[str], dict[str, Any]], sources: list[dict[str, Any]],
+                          x_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Check every not-yet-verified X account is the outlet it claims to be.
+
+        Private, missing or mismatched accounts are disabled and reported. The app
+        never follows anyone; it only reads public profiles.
+        """
+        ok_sources, changed = [], False
+        for src in x_sources:
+            if src.get("verified_at"):
+                ok_sources.append(src)
+                continue
+            try:
+                ok, reason = verify_x_profile(src, profile_info(src["handle"]))
+            except Exception as exc:
+                self.status[src["id"]] = f"not verified yet: {exc}"[:200]
+                continue
+            changed = True
+            if ok:
+                src["verified_at"] = now_iso()
+                ok_sources.append(src)
+            else:
+                src["enabled"] = False
+                src["disabled_reason"] = f"failed check: {reason}"
+                self.status[src["id"]] = src["disabled_reason"]
+                self.notify("X source skipped", reason)
+            time.sleep(1.5)
+        if changed:
+            save_sources(sources)
+        return ok_sources
 
     def _check_page(self, src: dict[str, Any]) -> None:
         prev = self.db.get_snapshot(src["id"])

@@ -49,6 +49,45 @@ X_EXTRACT_JS = """
 """
 
 
+PROFILE_JS = """
+() => {
+  const q = s => document.querySelector(s);
+  const name = q('[data-testid="UserName"]');
+  const bio = q('[data-testid="UserDescription"]');
+  const body = document.body ? document.body.innerText : '';
+  return {
+    exists: !!name,
+    name: name ? name.innerText : '',
+    bio: bio ? bio.innerText : '',
+    verified: !!(name && name.querySelector('[data-testid="icon-verified"], svg[aria-label*="erified"]')),
+    protected: !!q('[data-testid="icon-lock"]') || /posts are protected/i.test(body),
+    suspended: /account suspended|doesn.t exist/i.test(body),
+  };
+}
+"""
+
+
+def verify_x_profile(source: dict[str, Any], info: dict[str, Any]) -> tuple[bool, str]:
+    """Is this profile really the outlet we expect? Returns (ok, reason).
+
+    Rules: the account must exist, be public and not suspended, and its display
+    name must contain one of the source's expected names. Anything else
+    is skipped and reported, never read or followed.
+    """
+    handle = source.get("handle", "")
+    if not info.get("exists") or info.get("suspended"):
+        return False, f"@{handle} does not exist or is suspended"
+    if info.get("protected"):
+        return False, f"@{handle} is a private account"
+    expect = source.get("expect") or [source.get("name", handle)]
+    # Display name only, with the @handle stripped: a bio that merely mentions
+    # an outlet ("ex-Reuters reporter") is not enough.
+    shown = " ".join(w for w in re.split(r"\s+", info.get("name", "")) if not w.startswith("@")).strip()
+    if not any(e.lower() in shown.lower() for e in expect if e):
+        return False, f"@{handle} is '{shown}', which does not match {', '.join(expect)}"
+    return True, "verified" + (" (blue check)" if info.get("verified") else "")
+
+
 class ChromeUnavailable(RuntimeError):
     pass
 
@@ -116,7 +155,20 @@ class ChromeLive:
         return list(posts.values())[:max_posts]
 
     def read_x_profile(self, handle: str, max_posts: int = 15) -> list[dict[str, Any]]:
-        return self._read_x(f"https://x.com/{handle}", max_posts)
+        """Posts written by this account only (reposts of other accounts are dropped)."""
+        posts = self._read_x(f"https://x.com/{handle}", max_posts)
+        own = f"x.com/{handle.lower()}/status/"
+        return [p for p in posts if own in p.get("url", "").lower()]
+
+    def x_profile_info(self, handle: str) -> dict[str, Any]:
+        """Read the profile header (name, bio, verified, protected). Never follows."""
+        page = self._page
+        page.goto(f"https://x.com/{handle}", wait_until="domcontentloaded")
+        try:
+            page.wait_for_selector('[data-testid="UserName"], [data-testid="emptyState"]', timeout=15000)
+        except Exception:
+            pass
+        return page.evaluate(PROFILE_JS)
 
     def read_x_following(self, max_posts: int = 40) -> list[dict[str, Any]]:
         """The 'Following' home timeline: posts from every account you follow."""
