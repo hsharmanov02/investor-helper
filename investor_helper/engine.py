@@ -23,6 +23,7 @@ from .sources.trading212 import ReadOnlyTrading212, Trading212Error
 
 log = logging.getLogger(__name__)
 Notify = Callable[[str, str], None]
+MAX_CONSECUTIVE_FAILURES = 5
 
 
 class Engine:
@@ -71,6 +72,12 @@ class Engine:
         counts: Counter[str] = Counter()
         x_sources = [src for src in sources if src["kind"] == "x" and src.get("enabled")]
 
+        fails_p = data_dir() / "source_failures.json"
+        try:
+            fails = json.loads(fails_p.read_text(encoding="utf-8")) if fails_p.exists() else {}
+        except json.JSONDecodeError:
+            fails = {}
+        sources_changed = False
         for src in sources:
             if not src.get("enabled"):
                 continue
@@ -88,6 +95,18 @@ class Engine:
             except Exception as exc:
                 log.warning("Source %s failed: %s", src["id"], exc)
                 self.status[src["id"]] = f"error: {exc}"[:200]
+                fails[src["id"]] = fails.get(src["id"], 0) + 1
+                if fails[src["id"]] >= MAX_CONSECUTIVE_FAILURES and src["kind"] in ("rss", "page"):
+                    src["enabled"] = False
+                    src["disabled_reason"] = f"auto: failed {fails[src['id']]} refreshes in a row ({exc})"[:200]
+                    sources_changed = True
+                    self.notify("Source switched off", f"{src['name']} kept failing: {exc}"[:200])
+                continue
+            fails.pop(src["id"], None)
+
+        fails_p.write_text(json.dumps(fails), encoding="utf-8")
+        if sources_changed:
+            save_sources(sources)
 
         # X and Trading212 live through Chrome; API keys as fallback.
         account = None
@@ -171,6 +190,11 @@ class Engine:
         if st.get("backoff_until", "") > now_iso():
             self.status["x"] = f"paused until {st['backoff_until']} (X rate limit)"
             return 0
+        last_cycle = st.get("last_cycle", "")
+        if last_cycle and last_cycle > (datetime.now(timezone.utc) - timedelta(minutes=20)).replace(microsecond=0).isoformat():
+            self.status["x"] = "ok (read less than 20 minutes ago; skipped)"
+            return 0
+        st["last_cycle"] = now_iso()
         gap = max(5, s.x_seconds_between_pages)
         new = 0
         try:

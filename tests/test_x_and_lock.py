@@ -72,7 +72,12 @@ def test_x_reading_is_rationed_and_attributed(tmp_path, monkeypatch):
     assert len([x for x in c.calls if x.startswith("profile:")]) == 2
     ids = {i["source_id"] for i in eng.db.recent_items("2000-01-01")}
     assert ids == {"x:Reuters", "x:following"}
-    # Next cycle reads the profiles that were not read last time first.
+    # A second refresh within 20 minutes skips X entirely.
+    c_skip = FakeChrome()
+    eng._collect_x_chrome(c_skip, sources, sources)
+    assert c_skip.calls == []
+    # Later, it reads the profiles that were not read last time first.
+    st = eng._x_state(); st["last_cycle"] = "2000-01-01T00:00:00+00:00"; eng._save_x_state(st)
     c2 = FakeChrome()
     eng._collect_x_chrome(c2, sources, sources)
     first_profiles = [x for x in c.calls if x.startswith("profile:")]
