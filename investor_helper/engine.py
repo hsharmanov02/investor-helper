@@ -17,7 +17,8 @@ from .db import Database, now_iso
 from .report import build_report
 from .sources import calendars, edgar, pages, prices, rss, x_api
 from .chrome_lock import ChromeBusy, ChromeLock
-from .sources.chrome_live import ChromeLive, ChromeUnavailable, XRateLimited, parse_x_posts, verify_x_profile
+from .sources.chrome_live import (ChromeLive, ChromeUnavailable, XProfileUnreadable, XRateLimited,
+                                  parse_x_posts, verify_x_profile)
 from .sources.trading212 import ReadOnlyTrading212, Trading212Error
 
 log = logging.getLogger(__name__)

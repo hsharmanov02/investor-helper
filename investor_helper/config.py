@@ -106,8 +106,6 @@ def save_settings(s: Settings) -> None:
 # Each source: {"id", "kind", "name", "url"|"handle", "enabled", "tags"}
 #   kind: "rss" | "x" | "edgar" | "ipo" | "page"
 DEFAULT_SOURCES: list[dict[str, Any]] = [
-    {"id": "rss:reuters-business", "kind": "rss", "name": "Reuters Business",
-     "url": "https://feeds.reuters.com/reuters/businessNews", "enabled": True},
     {"id": "rss:cnbc-top", "kind": "rss", "name": "CNBC Top News",
      "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "enabled": True},
     {"id": "rss:cnbc-earnings", "kind": "rss", "name": "CNBC Earnings",
@@ -191,7 +189,13 @@ X_ALIASES: dict[str, list[str]] = {
     "OPECSecretariat": ["OPEC"], "IEA": ["IEA", "International Energy Agency"],
     "IPOtweet": ["Renaissance"], "eWhispers": ["Earnings Whispers"], "CMEGroup": ["CME"],
     "Trading212": ["Trading 212", "Trading212"], "SECGov": ["Securities and Exchange", "SEC"],
+    "CFTC": ["CFTC", "Commodity Futures"], "NYSE": ["NYSE", "New York Stock Exchange"],
+    "FINRA": ["FINRA"], "ecb": ["European Central Bank", "ECB"], "bankofengland": ["Bank of England"],
 }
+
+# Feeds known to be dead or blocking; disabled on load.
+DEAD_SOURCES = {"rss:reuters-business": "feeds.reuters.com no longer exists",
+                "rss:bls": "bls.gov blocks automated feed readers (HTTP 403)"}
 
 
 def _expect_for(handle: str, name: str) -> list[str]:
@@ -239,9 +243,37 @@ def load_sources() -> list[dict[str, Any]]:
     if sources is None:
         sources = [dict(s) for s in DEFAULT_SOURCES]
         save_sources(sources)
-    if merge_vetted_x_accounts(sources):
+    changed = merge_vetted_x_accounts(sources)
+    changed = migrate_sources(sources) or changed
+    if changed:
         save_sources(sources)
     return sources
+
+
+def migrate_sources(sources: list[dict[str, Any]]) -> bool:
+    """Apply fixes to an existing sources.json: dead feeds, name-check aliases, false rejections."""
+    changed = False
+    for src in sources:
+        reason = src.get("disabled_reason", "")
+        if src["id"] in DEAD_SOURCES and src.get("enabled"):
+            src["enabled"] = False
+            src["disabled_reason"] = DEAD_SOURCES[src["id"]]
+            changed = True
+        if src["kind"] != "x":
+            continue
+        h = src.get("handle", "")
+        extra = [a for a in X_ALIASES.get(h, []) if a not in src.get("expect", [])]
+        if extra:
+            src["expect"] = list(src.get("expect", [])) + extra
+            changed = True
+        # Re-check accounts rejected by the old, stricter name rule or while X was rate limiting.
+        if not src.get("enabled") and reason.startswith("failed check") and (
+                "does not exist or is suspended" in reason or ("does not match" in reason and extra)):
+            src["enabled"] = True
+            src.pop("disabled_reason", None)
+            src.pop("verified_at", None)
+            changed = True
+    return changed
 
 
 def prior_weight(source: dict[str, Any]) -> float:

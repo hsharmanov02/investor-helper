@@ -80,3 +80,13 @@ def test_market_hours():
     sat = datetime(2026, 11, 7, 17, 0, tzinfo=timezone.utc)
     assert not any(market_hours.status(sat).values())
     assert market_hours.exchange_for("VUSA.L") == "London (LSE)"
+
+
+def test_penny_single_filing_ranks_last():
+    now = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
+    one = [{"source_id": "edgar:recent", "kind": "filing", "title": "8-K", "sentiment": 0.9,
+            "published_at": (now - timedelta(hours=1)).isoformat(), "meta": {"importance": 0.6}}]
+    penny = score_ticker("KBSR", one, {}, _series(0.5, 30, 0.05), now=now)
+    solid = score_ticker("XXX", [one[0], dict(one[0], source_id="rss:a")], {}, _series(50, 30, 0.002), now=now)
+    assert rank([penny, solid])[0].ticker == "XXX"
+    assert abs(penny.predicted_move) <= 3 * penny.daily_vol * (3 ** 0.5) + 1e-9

@@ -92,7 +92,7 @@ def fetch_current(source: dict[str, Any], user_agent: str, cik_to_ticker: dict[s
         if r.ok:
             items.extend(parse_current_feed(source["id"], r.content, cik_to_ticker))
         else:
-            log.warning("EDGAR %s feed HTTP %s", form, r.status_code)
+            raise RuntimeError(f"EDGAR {form} feed HTTP {r.status_code}")
     return items
 
 

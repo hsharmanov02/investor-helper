@@ -92,7 +92,8 @@ def profile_info(handle: str, token: str) -> dict[str, Any]:
             params={"user.fields": "name,description,protected,verified"})
     data = r.json().get("data") if r.ok else None
     if not data:
-        return {"exists": False}
+        gone = r.ok or r.status_code == 404
+        return {"exists": False, "suspended": gone}
     return {"exists": True, "name": data.get("name", ""), "bio": data.get("description", ""),
             "protected": bool(data.get("protected")), "verified": bool(data.get("verified")),
             "suspended": False}

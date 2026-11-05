@@ -50,6 +50,8 @@ def parse_feed(source: dict[str, Any], content: bytes | str) -> list[dict[str, A
 def fetch(source: dict[str, Any]) -> list[dict[str, Any]]:
     r = get(source["url"], timeout=20)
     if not r.ok:
-        log.warning("RSS %s returned HTTP %s", source["id"], r.status_code)
-        return []
-    return parse_feed(source, r.content)
+        raise RuntimeError(f"HTTP {r.status_code} from {source['url']}")
+    items = parse_feed(source, r.content)
+    if not items and b"<rss" not in r.content[:2000] and b"<feed" not in r.content[:2000]:
+        raise RuntimeError("response is not an RSS/Atom feed")
+    return items

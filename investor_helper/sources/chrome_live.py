@@ -75,8 +75,11 @@ def verify_x_profile(source: dict[str, Any], info: dict[str, Any]) -> tuple[bool
     is skipped and reported, never read or followed.
     """
     handle = source.get("handle", "")
-    if not info.get("exists") or info.get("suspended"):
+    if info.get("suspended"):
         return False, f"@{handle} does not exist or is suspended"
+    if not info.get("exists"):
+        # Page did not render (rate limit, slow load, logged out): undecided, try later.
+        raise XProfileUnreadable(f"@{handle} profile did not load")
     if info.get("protected"):
         return False, f"@{handle} is a private account"
     expect = source.get("expect") or [source.get("name", handle)]
@@ -93,6 +96,10 @@ class ChromeUnavailable(RuntimeError):
 
 
 class XRateLimited(RuntimeError):
+    pass
+
+
+class XProfileUnreadable(RuntimeError):
     pass
 
 

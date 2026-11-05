@@ -125,8 +125,11 @@ def test_x_profile_verification():
     assert not ok and "private" in why
     ok, why = verify_x_profile(src, {"exists": True, "name": "Random Person\n@Reuters", "bio": "ex-Reuters reporter"})
     assert not ok and "does not match" in why
-    ok, _ = verify_x_profile(src, {"exists": False})
+    ok, _ = verify_x_profile(src, {"exists": False, "suspended": True})
     assert not ok
+    from investor_helper.sources.chrome_live import XProfileUnreadable
+    with pytest.raises(XProfileUnreadable):  # page didn't render: undecided, not rejected
+        verify_x_profile(src, {"exists": False})
 
 
 def test_vetted_x_list_merges_once():
@@ -142,3 +145,29 @@ def test_vetted_x_list_merges_once():
     # A source the user removes stays removed.
     save_sources([s for s in srcs if s.get("handle") != "NickTimiraos"])
     assert "NickTimiraos" not in {s.get("handle") for s in load_sources()}
+
+
+def test_ticker_price_target_is_not_target_corp():
+    from investor_helper.analysis.tickers import TickerFinder
+    f = TickerFinder()
+    assert "TGT" not in f.find("Jefferies raises AppLovin price target to $500")
+    assert "TGT" not in f.find("Analysts lift Dynatrace price target; target price now $60")
+    assert "TGT" not in f.find("the company hit its target for the year")
+    assert "TGT" in f.find("Shares of Target fell after the retailer cut guidance")
+    assert "V" not in f.find("He applied for a visa to the US")
+
+
+def test_migrations(isolated_home):
+    import json
+    from investor_helper.config import load_sources, sources_path
+    sources_path().write_text(json.dumps([
+        {"id": "rss:reuters-business", "kind": "rss", "name": "Reuters", "url": "x", "enabled": True},
+        {"id": "x:CFTC", "kind": "x", "name": "Commodity Futures Trading Commission", "handle": "CFTC",
+         "expect": ["Commodity Futures Trading Commission"], "enabled": False,
+         "disabled_reason": "failed check: @CFTC is 'CFTC', which does not match Commodity Futures Trading Commission"},
+        {"id": "x:Old", "kind": "x", "name": "Old", "handle": "Old", "enabled": False,
+         "disabled_reason": "failed check: @Old does not exist or is suspended"}]))
+    srcs = {s["id"]: s for s in load_sources()}
+    assert srcs["rss:reuters-business"]["enabled"] is False
+    assert srcs["x:CFTC"]["enabled"] is True and "CFTC" in srcs["x:CFTC"]["expect"]
+    assert srcs["x:Old"]["enabled"] is True

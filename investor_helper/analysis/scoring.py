@@ -122,7 +122,17 @@ def score_ticker(
     conf += 0.1 if last else 0.0
     if model_hit_rate is not None:
         conf += 0.25 * (model_hit_rate - 0.5)
+    # Thin evidence and wild prices deserve less trust.
+    if len(items) < 2:
+        conf *= 0.7
+    if vol > 0.06:
+        conf *= 0.6
+    if last is not None and last < 2.0:
+        conf *= 0.5
     conf = max(0.05, min(0.95, conf))
+    # Keep a single extreme ticker from dominating: cap the move at 3 typical days.
+    cap = 3 * vol * math.sqrt(horizon_days)
+    predicted_move = max(-cap, min(cap, predicted_move))
 
     return TickerScore(
         ticker=ticker, score=combined, predicted_move=predicted_move, confidence=conf,
@@ -133,6 +143,16 @@ def score_ticker(
     )
 
 
+MIN_PRICE = 2.0
+
+
 def rank(scores: list[TickerScore]) -> list[TickerScore]:
-    """Best buy candidates first: expected move weighted by confidence."""
-    return sorted(scores, key=lambda s: s.predicted_move * s.confidence, reverse=True)
+    """Best buy candidates first: expected move weighted by confidence.
+
+    Penny stocks (under $2) and moves backed by a single item are ranked after
+    everything else so a lone filing cannot top the list.
+    """
+    def key(s: TickerScore) -> tuple[int, float]:
+        weak = (s.last_price is not None and s.last_price < MIN_PRICE) or s.n_items < 2 and s.news_score != 0
+        return (0 if weak else 1, s.predicted_move * s.confidence)
+    return sorted(scores, key=key, reverse=True)

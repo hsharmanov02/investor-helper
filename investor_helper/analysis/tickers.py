@@ -45,6 +45,12 @@ STOP_TICKERS = {
     "THE", "AND", "FOR", "NEW", "ON", "AT", "IT", "BE", "ALL", "ARE", "IS", "OR", "NOW", "BY",
 }
 
+# Brand names that are also everyday words: only count them when capitalised,
+# and never in phrases like "price target".
+AMBIGUOUS_NAMES = {"target", "visa", "ford", "dell", "apple", "amazon", "oracle", "uber", "intel",
+                   "merck", "spotify", "target", "shopify", "snowflake", "disney", "nike"}
+_NOT_COMPANY = re.compile(r"(price|profit|inflation|rate|earnings|sales)[\s-]+targets?$|^targets?[\s-]+(price|range|rate)", re.I)
+
 _CASHTAG = re.compile(r"\$([A-Z]{1,5}(?:\.[A-Z])?)\b")
 _EXCHANGE = re.compile(
     r"\((?:NASDAQ|NYSE|NYSE American|AMEX|Nasdaq|NasdaqGS|NasdaqGM|LSE|TSX|OTC)\s*:\s*([A-Z]{1,5}(?:\.[A-Z])?)\)"
@@ -104,9 +110,23 @@ class TickerFinder:
             add(m.group(1))
         if self._name_re:
             for m in self._name_re.finditer(text):
-                t = self.names.get(m.group(1).lower())
-                if t:
-                    add(t)
+                word = m.group(1)
+                key = word.lower()
+                t = self.names.get(key)
+                if not t:
+                    continue
+                if key in AMBIGUOUS_NAMES:
+                    if not word[0].isupper():
+                        continue
+                    around = text[max(0, m.start() - 20):m.end() + 12]
+                    if _NOT_COMPANY.search(text[max(0, m.start() - 20):m.end()]) or \
+                            re.match(r"targets?[\s-]+(price|range|rate)", text[m.start():m.end() + 12], re.I):
+                        continue
+                    # Sentence-initial capital alone is weak evidence for "Target"/"Visa".
+                    if key in ("target", "visa") and (m.start() == 0 or text[max(0, m.start() - 2):m.start()] in (". ", "\n")):
+                        if not re.search(r"\b(Corp|Inc|shares|stock|TGT|V\b|retailer|payments)", around + text[m.end():m.end() + 40]):
+                            continue
+                add(t)
         return found
 
 
