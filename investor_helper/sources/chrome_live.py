@@ -149,7 +149,7 @@ class ChromeLive:
                 "--remote-debugging-port=9222 (see README)."
             ) from exc
         ctx = browser.contexts[0] if browser.contexts else browser.new_context()
-        self._page = ctx.new_page()
+        self._page = _open_background_tab(browser, ctx)
         self._page.set_default_navigation_timeout(self.nav_timeout_ms)
         # Only Trading212 traffic goes through the guard, so X pages load at full speed.
         self._page.route(re.compile(r"https?://([^/]*\.)?trading212\.com/"), _guard_route)
@@ -256,6 +256,19 @@ class ChromeLive:
             raise ChromeUnavailable(
                 f"Trading212 loaded but no account summary was seen ({len(captured)} summary responses).")
         return snap
+
+
+def _open_background_tab(browser: Any, ctx: Any) -> Any:
+    """Open a tab without bringing it to the front, so the user's work isn't interrupted."""
+    try:
+        cdp = browser.new_browser_cdp_session()
+        with ctx.expect_page(timeout=10000) as info:
+            cdp.send("Target.createTarget", {"url": "about:blank", "background": True})
+        cdp.detach()
+        return info.value
+    except Exception as exc:  # fall back to a normal new tab
+        log.info("Background tab not available (%s); opening a normal tab", exc)
+        return ctx.new_page()
 
 
 def release_page(page: Any) -> None:
