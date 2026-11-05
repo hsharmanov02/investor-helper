@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -170,15 +171,75 @@ def sources_path() -> Path:
     return data_dir() / "sources.json"
 
 
+# Extra names to look for in a profile's display name (the vetted list's names
+# carry descriptions in brackets, and some outlets use short brand names on X).
+X_ALIASES: dict[str, list[str]] = {
+    "markets": ["Bloomberg"], "WSJ": ["Wall Street Journal", "WSJ"], "CNBCnow": ["CNBC"],
+    "SquawkCNBC": ["Squawk"], "nytimesbusiness": ["New York Times", "NYT"], "BBCBusiness": ["BBC"],
+    "Investingcom": ["Investing.com"], "TheFCA": ["Financial Conduct Authority", "FCA"],
+    "USTreasury": ["Treasury"], "BLS_gov": ["Labor Statistics", "BLS"],
+    "BEA_News": ["Economic Analysis", "BEA"], "EIAgov": ["Energy Information", "EIA"],
+    "IMFNews": ["IMF", "International Monetary Fund"], "LSEGplc": ["LSEG", "London Stock Exchange"],
+    "OPECSecretariat": ["OPEC"], "IEA": ["IEA", "International Energy Agency"],
+    "IPOtweet": ["Renaissance"], "eWhispers": ["Earnings Whispers"], "CMEGroup": ["CME"],
+    "Trading212": ["Trading 212", "Trading212"], "SECGov": ["Securities and Exchange", "SEC"],
+}
+
+
+def _expect_for(handle: str, name: str) -> list[str]:
+    clean = re.sub(r"\s*\(.*?\)", "", name).strip()
+    out = [clean, re.sub(r"^(The|U\.S\.|UK)\s+", "", clean)]
+    out += X_ALIASES.get(handle, [])
+    return list(dict.fromkeys(e for e in out if e))
+
+
+def merge_vetted_x_accounts(sources: list[dict[str, Any]]) -> bool:
+    """Add accounts from the bundled vetted list once per list version.
+
+    Every one is still checked on X (public, right display name) before it is read.
+    Accounts the user removed are not re-added until the list version changes.
+    """
+    try:
+        vetted = json.loads(bundled_path("investor_helper", "data", "official_x_accounts.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    marker = data_dir() / "vetted_x_version.txt"
+    version = f"{vetted.get('version')}-{vetted.get('created')}-{len(vetted.get('accounts', []))}"
+    if marker.exists() and marker.read_text(encoding="utf-8").strip() == version:
+        return False
+    have = {str(s.get("handle", "")).lower() for s in sources if s["kind"] == "x"}
+    for a in vetted.get("accounts", []):
+        h = a["handle"]
+        if h.lower() in have:
+            continue
+        sources.append({"id": f"x:{h}", "kind": "x", "name": re.sub(r"\s*\(.*?\)", "", a["name"]).strip(),
+                        "handle": h, "expect": _expect_for(h, a["name"]), "enabled": True,
+                        "prior_weight": float(a.get("weight", 0.6)), "category": a.get("category", ""),
+                        "seeded_from": "official_x_accounts"})
+    marker.write_text(version, encoding="utf-8")
+    return True
+
+
 def load_sources() -> list[dict[str, Any]]:
     p = sources_path()
+    sources = None
     if p.exists():
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
+            sources = json.loads(p.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            pass
-    save_sources(DEFAULT_SOURCES)
-    return [dict(s) for s in DEFAULT_SOURCES]
+            sources = None
+    if sources is None:
+        sources = [dict(s) for s in DEFAULT_SOURCES]
+        save_sources(sources)
+    if merge_vetted_x_accounts(sources):
+        save_sources(sources)
+    return sources
+
+
+def prior_weight(source: dict[str, Any]) -> float:
+    """Starting weight before any predictions are graded (vetted list 0-1 -> 0.6-1.2)."""
+    pw = source.get("prior_weight")
+    return 1.0 if pw is None else 0.6 + 0.6 * float(pw)
 
 
 def save_sources(sources: list[dict[str, Any]]) -> None:

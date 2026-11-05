@@ -127,3 +127,18 @@ def test_x_profile_verification():
     assert not ok and "does not match" in why
     ok, _ = verify_x_profile(src, {"exists": False})
     assert not ok
+
+
+def test_vetted_x_list_merges_once():
+    from investor_helper.config import load_sources, prior_weight, save_sources
+    srcs = load_sources()
+    x = {s["handle"]: s for s in srcs if s["kind"] == "x"}
+    assert "NickTimiraos" in x and "Barrons" not in x
+    assert "Federal Reserve" in x["federalreserve"]["expect"]
+    assert "Financial Conduct Authority" in x["TheFCA"]["expect"]
+    assert x["SECGov"]["id"] == "x:SECGov"  # existing default kept, not duplicated
+    assert len([s for s in srcs if s.get("handle") == "SECGov"]) == 1
+    assert abs(prior_weight(x["NickTimiraos"]) - (0.6 + 0.6 * 0.8)) < 1e-9
+    # A source the user removes stays removed.
+    save_sources([s for s in srcs if s.get("handle") != "NickTimiraos"])
+    assert "NickTimiraos" not in {s.get("handle") for s in load_sources()}

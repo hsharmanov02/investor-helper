@@ -11,7 +11,7 @@ from typing import Any, Callable
 from .analysis import learner, sentiment
 from .analysis.scoring import rank, score_ticker
 from .analysis.tickers import TickerFinder, load_finder
-from .config import Settings, data_dir, load_settings, load_sources, save_sources
+from .config import Settings, data_dir, load_settings, load_sources, prior_weight, save_sources
 from .db import Database, now_iso
 from .report import build_report
 from .sources import calendars, edgar, pages, prices, rss, x_api
@@ -249,7 +249,8 @@ class Engine:
             if self.rotation:
                 save_sources(sources)
                 self.notify("Sources updated", "; ".join(self.rotation)[:250])
-        weights = {k: v["weight"] for k, v in weights_full.items()}
+        weights = {src["id"]: prior_weight(src) for src in sources}
+        weights.update({k: v["weight"] for k, v in weights_full.items()})
         stats = self.db.prediction_stats()
 
         since = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()

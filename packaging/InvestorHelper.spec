@@ -9,7 +9,7 @@ a = Analysis(
     ["../run_investor_helper.py"],
     pathex=[".."],
     binaries=pw_binaries + fp_binaries,
-    datas=pw_datas + fp_datas,
+    datas=pw_datas + fp_datas + [("../investor_helper/data", "investor_helper/data")],
     hiddenimports=pw_hidden + fp_hidden + ["zoneinfo", "tzdata"],
     excludes=["tkinter", "matplotlib", "numpy", "pandas", "PySide6.QtWebEngineCore",
               "PySide6.Qt3DCore", "PySide6.QtQuick", "PySide6.QtQml"],
